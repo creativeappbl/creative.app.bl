@@ -44,6 +44,7 @@ body{
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
 .cfg-btn{font-size:12px;padding:6px 15px;border-radius:20px;border:0.5px solid var(--border);background:var(--bg);color:var(--muted);cursor:pointer;font-weight:500;}
 .cfg-btn:hover{background:#e8e8ed;}
+.user-pill{max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--muted);padding:5px 10px;border-radius:20px;background:var(--bg);border:0.5px solid var(--border);}
 
 /* ── VIEWS ── */
 .view{display:none;}.view.on{display:block;}
@@ -337,7 +338,9 @@ code{font-size:11px;background:var(--bg);padding:2px 5px;border-radius:4px;}
   </div>
   <div class="topbar-right">
     <div class="sync-pill"><div class="sdot" id="sdot"></div><span id="slbl">Nepřipojeno</span></div>
+    <div class="user-pill" id="userEmail" title="Přihlášený účet" style="display:none;"></div>
     <button class="cfg-btn" onclick="loadRemote()">Načíst Supabase</button>
+    <button class="cfg-btn" onclick="logout()">Odhlásit</button>
   </div>
 </div>
 
@@ -603,10 +606,20 @@ const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 
 
-let S={weeks:{},projects:[],notes:'',events:[],posts:[],reportRows:{},noteCards:[],cardTitles:{},deptOverrides:{}};
+function makeEmptyState(){
+  return {weeks:{},projects:[],notes:'',events:[],posts:[],reportRows:{},noteCards:[],cardTitles:{},deptOverrides:{}};
+}
+
+let S=makeEmptyState();
 let curWk='',viewWk='';
 let editProjIdx=null,editEvIdx=null,openEvIdx=null,editPostIdx=null;
 let saveTO=null,maxCard=null,postFilter='all';
+let currentUserId=null,currentUserEmail='';
+let syncInterval=null;
+
+function localKey(){
+  return currentUserId ? `bf_local_${currentUserId}` : null;
+}
 
 // ════════════════════════════════════════
   // UTILS — Week helpers, escape, toast
@@ -638,84 +651,10 @@ function switchView(v){
   // ════════════════════════════════════════
 let repYear='2025',repSort='date',repDept='all';
 
-const REPORT_DATA={
-  '2025':[
-    {date:'07.01.',name:'Příspěvek Mondi',dept:'Automatizace',foto:true,video:false,reach:4170,likes:73},
-    {date:'14.01.',name:'Nový rok v Blumenbeckeru',dept:'firma',foto:true,video:false,reach:1640,likes:43},
-    {date:'21.01.',name:'Karusel - B.EYE',dept:'Robotika',foto:true,video:false,reach:887,likes:0},
-    {date:'28.01.',name:'Obecně co děláme - představení oddělení',dept:'firma',foto:false,video:true,reach:586,likes:30},
-    {date:'04.02.',name:'TÉMA SVAŘOVÁNÍ - LORCH, umění',dept:'Svařování',foto:true,video:false,reach:798,likes:25},
-    {date:'11.02.',name:'Poděkování backofficu, účtárně',dept:'Firma',foto:true,video:false,reach:1624,likes:39},
-    {date:'18.02.',name:'Potřebujete vyměnit starou robotickou skříň KRC2 na novou KRC4/KRC5?',dept:'Robotika / Servis',foto:true,video:false,reach:1509,likes:30},
-    {date:'25.02.',name:'Isola',dept:'Robotika',foto:false,video:false,reach:1270,likes:28},
-    {date:'04.03.',name:'Trima - Navíječka flísu JUMBO',dept:'Automatizace',foto:true,video:true,reach:909,likes:26},
-    {date:'11.03.',name:'Jan Dostál - Lorch',dept:'Svařování',foto:true,video:false,reach:984,likes:29},
-    {date:'18.03.',name:'Poverly - válcovací stroj',dept:'Automatizace',foto:true,video:false,reach:657,likes:37},
-    {date:'25.03.',name:'Mrs. Blumenbecker',dept:'Robotika',foto:true,video:false,reach:1090,likes:67},
-    {date:'01.04.',name:'Exkurze',dept:'obecné',foto:false,video:true,reach:1239,likes:39},
-    {date:'08.04.',name:'Svařování - video čištění',dept:'Svařování',foto:false,video:true,reach:1238,likes:34},
-    {date:'15.04.',name:'Velikonoce',dept:'obecné',foto:true,video:false,reach:728,likes:16},
-    {date:'22.04.',name:'Den Země - Grafika z výroční zprávy',dept:'obecné',foto:true,video:false,reach:713,likes:20},
-    {date:'29.04.',name:'Paletizace',dept:'robotika',foto:false,video:true,reach:1372,likes:32},
-    {date:'13.05.',name:'Exkurze SŠ Štětí, ohlédnutí',dept:'obecné',foto:true,video:false,reach:1466,likes:35},
-    {date:'20.05.',name:'Máme vlastní výrobu',dept:'firma',foto:true,video:false,reach:966,likes:28},
-    {date:'27.05.',name:'Laserové svařování',dept:'Svařování',foto:false,video:true,reach:1039,likes:20},
-    {date:'10.06.',name:'První Dětský den v Blumenbeckeru',dept:'obecné',foto:false,video:true,reach:1498,likes:43},
-    {date:'17.06.',name:'První Dětský den v Blumenbeckeru (foto)',dept:'obecné',foto:true,video:false,reach:1474,likes:37},
-    {date:'24.06.',name:'Oslava 30 let společnosti Blumenbecker Prag (video)',dept:'obecné',foto:false,video:true,reach:1775,likes:47},
-    {date:'17.06.',name:'Oslava 30 let společnosti Blumenbecker Prag (foto)',dept:'obecné',foto:true,video:false,reach:2016,likes:38},
-    {date:'24.06.',name:'ruční svařování',dept:'svařování',foto:true,video:false,reach:779,likes:24},
-    {date:'01.07.',name:'Když kolega ještě neměl dovolenou',dept:'obecné',foto:true,video:false,reach:1281,likes:25},
-    {date:'08.07.',name:'Laserové svařování není jen moderní trend - carousel',dept:'svařování',foto:true,video:false,reach:759,likes:16},
-    {date:'05.08.',name:'Chytré firmy servisují preventivně',dept:'Servis',foto:true,video:false,reach:1130,likes:29},
-    {date:'12.08.',name:'Robotická obsluha CNC a tvářecích strojů. Letos na MSV!',dept:'robotika',foto:true,video:false,reach:1552,likes:40},
-    {date:'26.08.',name:'Léto pomalu končí, ale naše plány nabírají na obrátkách.',dept:'obecné',foto:true,video:false,reach:1969,likes:46},
-    {date:'02.09.',name:'Od návrhu po výrobu – navrhujeme robotické linky pod jednou střechou',dept:'konstrukce',foto:true,video:false,reach:1263,likes:41},
-    {date:'09.09.',name:'Mezinárodní strojírenský veletrh se blíží!',dept:'robotika',foto:false,video:true,reach:1788,likes:47},
-    {date:'16.09.',name:'B.EYE at Poland\'s Largest Industrial Event!',dept:'robotika',foto:true,video:false,reach:1642,likes:35},
-    {date:'23.09.',name:'MSV v Brně je za dveřmi a my se na vás těšíme!',dept:'robotika',foto:false,video:true,reach:1247,likes:24},
-    {date:'30.09.',name:'Některé projekty mluví samy za sebe.',dept:'automatizace',foto:true,video:false,reach:2897,likes:55},
-    {date:'02.10.',name:'Nahlédněte do zákulisí našeho marketingu!',dept:'obecné',foto:false,video:true,reach:2018,likes:33},
-    {date:'07.10.',name:'Za každým pohybem stojí náš PLC tým',dept:'PLC',foto:true,video:false,reach:1827,likes:40},
-    {date:'09.10.',name:'MSV Brno 2025 je v plném proudou!',dept:'Obecné / robotika',foto:true,video:false,reach:2406,likes:60},
-    {date:'14.10.',name:'MSV 2025. Čtyři náročné dny, které stály za to!',dept:'obecné',foto:false,video:true,reach:1310,likes:46},
-    {date:'16.10.',name:'Integrujeme jednu robotickou buňku za druhou.',dept:'robotika',foto:true,video:false,reach:2059,likes:37},
-    {date:'21.10.',name:'Od manuálních tahačů k AMR vozíkům',dept:'automatizace',foto:false,video:true,reach:1551,likes:36},
-    {date:'29.10.',name:'B.EYE at Poland\'s Largest Industrial Event!',dept:'obecné',foto:true,video:false,reach:632,likes:10},
-    {date:'04.11.',name:'Blumenbecker na potítku',dept:'obecné',foto:false,video:true,reach:652,likes:36},
-    {date:'06.11.',name:'Warsaw Industry Week se chýlí ke konci.',dept:'obecné',foto:true,video:false,reach:846,likes:29},
-    {date:'11.11.',name:'Jak se navrhuje PLC systém? -Blumenbecker na potítku',dept:'obecné',foto:false,video:true,reach:1058,likes:24},
-    {date:'18.11.',name:'Zkušenost nevzniká v učebnici. Vzniká u stroje. -Blumenbecker na potítku',dept:'obecné',foto:false,video:true,reach:734,likes:19},
-    {date:'25.11.',name:'S autem jezdíte také na servis. Proč ne s robotem?',dept:'servis',foto:true,video:false,reach:423,likes:22},
-    {date:'09.12.',name:'Camera! Action! - natáčení firemního spotu',dept:'obecné',foto:false,video:true,reach:816,likes:28},
-    {date:'11.12.',name:'Blumenbecker na potítku – zákulisní momenty',dept:'obecné',foto:false,video:true,reach:304,likes:7},
-    {date:'16.12.',name:'Vánoční video',dept:'obecné',foto:false,video:true,reach:3929,likes:66},
-  ],
-  '2024':[
-    {date:'27.08.2024',name:'Školení',dept:'servis',foto:true,video:false,reach:1177,likes:0},
-    {date:'03.09.',name:'Informace výstavy',dept:'FIRMA',foto:false,video:true,reach:656,likes:0},
-    {date:'10.09.',name:'příspěvek Čína',dept:'svařování',foto:true,video:false,reach:1742,likes:0},
-    {date:'17.09.',name:'Servis',dept:'servis',foto:true,video:false,reach:995,likes:0},
-    {date:'24.09.',name:'B_ARC – promo',dept:'robotika',foto:true,video:false,reach:982,likes:0},
-    {date:'01.10.',name:'Propagace MSV (video pozvánka) + Siemens Robot Pick AI (timelaps)',dept:'FIRMA / robotika',foto:false,video:true,reach:4397,likes:0},
-    {date:'08.10.',name:'Jsme na MSV',dept:'FIRMA',foto:false,video:true,reach:1587,likes:0},
-    {date:'15.10.',name:'Krátké ohlédnutí se za MSV + ohlednátí (foto)',dept:'FIRMA',foto:true,video:true,reach:1515,likes:0},
-    {date:'22.10.',name:'Den otevřených dveří Bezděčín',dept:'FIRMA',foto:false,video:true,reach:985,likes:0},
-    {date:'29.10.',name:'byli jsme na FFG (fotky) / Halloween',dept:'FIRMA',foto:true,video:false,reach:1331,likes:0},
-    {date:'05.11.',name:'Velká Bystřice (laserové čištění a svařování) VIDEO',dept:'svařování',foto:false,video:true,reach:926,likes:0},
-    {date:'12.11.',name:'Automatizace (novinky? Nové projekty?)',dept:'automatizace',foto:true,video:false,reach:1216,likes:0},
-    {date:'26.11.',name:'BinPicking - odebírání ze 3D prostoru (depaletizace)',dept:'robotika',foto:false,video:false,reach:2330,likes:0},
-    {date:'03.12.',name:'Vánoční video',dept:'firma',foto:false,video:true,reach:2514,likes:0},
-    {date:'17.12.',name:'Exkurze Bezděčín',dept:'firma',foto:true,video:false,reach:1920,likes:0},
-    {date:'24.12.',name:'PF2025',dept:'firma',foto:true,video:false,reach:570,likes:0},
-  ]
-};
-
+// Reporty jsou nyní plně uživatelská data uložená v S.reportRows / Supabase.
+// Historická data z původní verze se jednorázově převedou pomocí přiloženého SQL migračního skriptu.
 function getAllYears(){
-  const builtin=Object.keys(REPORT_DATA);
-  const user=Object.keys(S.reportRows||{});
-  const all=[...new Set([...builtin,...user])].sort().reverse();
-  return all;
+  return Object.keys(S.reportRows||{}).sort().reverse();
 }
 
 function renderRepToolbar(){
@@ -818,9 +757,8 @@ function renderReport(){
   if(!S.reportRows) S.reportRows={};
   renderRepToolbar();
 
-  const builtIn=(REPORT_DATA[repYear]||[]).map(r=>({...r,_builtin:true}));
   const userRows=(S.reportRows[repYear]||[]).map((r,i)=>({...r,_builtin:false,_userIdx:i}));
-  let rows=[...builtIn,...userRows];
+  let rows=[...userRows];
 
   // stats on full unfiltered data
   const total=rows.length;
@@ -834,7 +772,7 @@ function renderReport(){
     <div class="rep-stat"><div class="rep-stat-lbl">Nejlepší dosah</div><div class="rep-stat-val" style="font-size:13px;font-weight:700;padding-top:4px;"><span style="font-size:22px">${(best.reach||0).toLocaleString('cs-CZ')}</span><br><span style="font-size:11px;color:var(--muted);font-weight:400;">${esc(best.name)}</span></div></div>
   `;
 
-  // dept filter — use deptOverrides for builtin rows
+  // dept filter — všechna data patří aktuálnímu uživateli
   if(repDept!=='all'){
     rows=rows.filter(r=>{
       const key=`${repYear}:${r.name}`;
@@ -869,7 +807,7 @@ function renderReport(){
     tr.appendChild(td(`<span class="muted">${esc(r.date)}</span>`));
     tr.appendChild(td(`<span style="font-weight:500">${esc(r.name)}${badge}</span>`));
 
-    // dept cell — dropdown for ALL rows
+    // dept cell — dropdown
     const deptTd=document.createElement('td');
     const overrideKey=`${repYear}:${r.name}`;
     if(!S.deptOverrides)S.deptOverrides={};
@@ -1559,7 +1497,8 @@ function updCC(){const l=(document.getElementById('postContent').textContent||''
 
    
     const SUPABASE_TABLE = 'app_state';
-    const SUPABASE_ROW_ID = 'main';
+    // DŮLEŽITÉ: v Supabase musí být na app_state zapnuté RLS.
+    // Policy: id = auth.uid()::text (viz přiložený SQL migrační skript).
 
     function openCfg() {
         toast('Supabase je nastavený v kódu.');
@@ -1581,30 +1520,31 @@ function updCC(){const l=(document.getElementById('postContent').textContent||''
     }
 
     function normalizeState() {
-    S.weeks         = S.weeks         || {};
-    S.projects      = S.projects      || [];
-    S.notes         = S.notes         || '';
-    S.events        = S.events        || [];
-    S.posts         = S.posts         || [];
-    S.reportRows    = S.reportRows    || {};
-    S.noteCards     = S.noteCards     || [];
-    S.cardTitles    = S.cardTitles    || {};
-    S.deptOverrides = S.deptOverrides || {};
-  };
-        if (!S.projects) S.projects = [];
-        if (!S.notes) S.notes = '';
-        if (!S.events) S.events = [];
-        if (!S.posts) S.posts = [];
-    
+      S.weeks         = S.weeks         || {};
+      S.projects      = S.projects      || [];
+      S.notes         = S.notes         || '';
+      S.events        = S.events        || [];
+      S.posts         = S.posts         || [];
+      S.reportRows    = S.reportRows    || {};
+      S.noteCards     = S.noteCards     || [];
+      S.cardTitles    = S.cardTitles    || {};
+      S.deptOverrides = S.deptOverrides || {};
+    }
 
     async function loadRemote() {
+        if (!currentUserId) {
+            console.warn('loadRemote(): není přihlášený uživatel.');
+            syncSt('err');
+            return;
+        }
+
         syncSt('syncing');
 
         try {
             const { data, error } = await db
                 .from(SUPABASE_TABLE)
                 .select('data')
-                .eq('id', SUPABASE_ROW_ID)
+                .eq('id', currentUserId)
                 .maybeSingle();
 
             if (error) throw error;
@@ -1612,14 +1552,19 @@ function updCC(){const l=(document.getElementById('postContent').textContent||''
             if (data?.data) {
                 S = data.data;
                 normalizeState();
-                localStorage.setItem('bf_local', JSON.stringify(S));
+                localStorage.setItem(localKey(), JSON.stringify(S));
             } else {
+                // Pro nového uživatele vytvoří jeho vlastní prázdný řádek.
+                // Pokud existuje lokální cache tohoto uživatele, zachová se a uloží.
+                normalizeState();
                 await save(true);
             }
 
             syncSt('ok');
             renderAll();
             loadCardTitles();
+            if (document.getElementById('view-posts')?.classList.contains('on')) renderPosts();
+            if (document.getElementById('view-report')?.classList.contains('on')) renderReport();
         } catch (err) {
             console.error('Supabase load error:', err);
             syncSt('err');
@@ -1627,20 +1572,31 @@ function updCC(){const l=(document.getElementById('postContent').textContent||''
     }
 
     function save(immediate = false) {
+        if (!currentUserId) {
+            console.warn('save(): není přihlášený uživatel, ukládání bylo přeskočeno.');
+            return immediate ? Promise.resolve() : undefined;
+        }
+
         normalizeState();
-        localStorage.setItem('bf_local', JSON.stringify(S));
+        localStorage.setItem(localKey(), JSON.stringify(S));
 
         clearTimeout(saveTO);
 
+        const userIdAtSave = currentUserId;
+        const stateAtSave = JSON.parse(JSON.stringify(S));
+
         const doSave = async () => {
+            // Pojistka proti zápisu pod jiný účet při změně session.
+            if (!currentUserId || currentUserId !== userIdAtSave) return;
+
             syncSt('syncing');
 
             try {
                 const { error } = await db
                     .from(SUPABASE_TABLE)
                     .upsert({
-                        id: SUPABASE_ROW_ID,
-                        data: S,
+                        id: userIdAtSave,
+                        data: stateAtSave,
                         updated_at: new Date().toISOString()
                     });
 
@@ -1659,7 +1615,6 @@ function updCC(){const l=(document.getElementById('postContent').textContent||''
 
         saveTO = setTimeout(doSave, 800);
     }
-
 
 
 
@@ -1729,7 +1684,7 @@ function importLinkedInXLS(file){
         // Check duplicate
         if(!S.reportRows)S.reportRows={};
         if(!S.reportRows[year])S.reportRows[year]=[];
-        const existing=[...(REPORT_DATA[year]||[]),...(S.reportRows[year]||[])];
+        const existing=[...(S.reportRows[year]||[])];
         const isDupe=existing.some(r=>r.name&&cleanName&&
           r.name.substring(0,30).toLowerCase()===cleanName.substring(0,30).toLowerCase());
         if(isDupe){skipped++;return;}
@@ -1768,17 +1723,27 @@ async function login() {
 
   if (msg) msg.textContent = '';
 
-  const { error } = await db.auth.signInWithPassword({ email, password });
+  const { data, error } = await db.auth.signInWithPassword({ email, password });
 
   if (error) {
     if (msg) msg.textContent = 'Špatný e-mail nebo heslo.';
     return;
   }
 
-  startApp();
+  if (!data?.user) {
+    if (msg) msg.textContent = 'Přihlášení se nepodařilo dokončit.';
+    return;
+  }
+
+  startApp(data.user);
 }
 
 async function logout() {
+  clearTimeout(saveTO);
+  if (syncInterval) {
+    clearInterval(syncInterval);
+    syncInterval = null;
+  }
   await db.auth.signOut();
   location.reload();
 }
@@ -1790,23 +1755,42 @@ async function init() {
     console.error('Supabase auth error:', error);
   }
 
-  if (data?.session) {
-    startApp();
+  if (data?.session?.user) {
+    startApp(data.session.user);
   } else {
     document.getElementById('loginScreen').style.display = 'flex';
   }
 }
 
-function startApp() {
+function startApp(user) {
+  if (!user?.id) {
+    console.error('startApp(): chybí Supabase user.id');
+    document.getElementById('loginScreen').style.display = 'flex';
+    return;
+  }
+
+  currentUserId = user.id;
+  currentUserEmail = user.email || '';
+
+  const userEmailEl = document.getElementById('userEmail');
+  if (userEmailEl) {
+    userEmailEl.textContent = currentUserEmail || currentUserId;
+    userEmailEl.title = currentUserEmail ? `Přihlášen: ${currentUserEmail}` : `Uživatel: ${currentUserId}`;
+    userEmailEl.style.display = 'block';
+  }
+
   document.getElementById('loginScreen').style.display = 'none';
 
   curWk = wkKey(new Date());
   viewWk = curWk;
 
-  // Restore from localStorage first for instant load
-  const saved = localStorage.getItem('bf_local');
+  // Každý Supabase účet má vlastní lokální cache.
+  // Neexistuje-li cache pro tento účet, začínáme čistým stavem.
+  S = makeEmptyState();
+  const key = localKey();
+  const saved = key ? localStorage.getItem(key) : null;
   if (saved) {
-    try { S = JSON.parse(saved); } catch { /* ignore corrupt data */ }
+    try { S = JSON.parse(saved); } catch { S = makeEmptyState(); }
   }
 
   normalizeState();
@@ -1814,9 +1798,20 @@ function startApp() {
 
   renderAll();
   loadCardTitles();
-  loadRemote();                      // sync from Supabase after auth
-  setInterval(loadRemote, 30_000);   // poll every 30s for multi-user sync
+  loadRemote(); // po přihlášení načti autoritativní data tohoto uživatele ze Supabase
+
+  if (syncInterval) clearInterval(syncInterval);
+  syncInterval = setInterval(loadRemote, 30_000);
 }
+
+// Pokud se session změní v jiné záložce/profilu stejného browser storage,
+// raději stránku obnovíme, aby se nikdy nemíchal účet a lokální stav.
+db.auth.onAuthStateChange((event, session) => {
+  if (event === 'SIGNED_OUT') return;
+  if (currentUserId && session?.user?.id && session.user.id !== currentUserId) {
+    location.reload();
+  }
+});
 
 init();
 </script>
