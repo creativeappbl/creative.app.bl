@@ -651,8 +651,6 @@ function switchView(v){
   // ════════════════════════════════════════
 let repYear='2025',repSort='date',repDept='all';
 
-// Reporty jsou nyní plně uživatelská data uložená v S.reportRows / Supabase.
-// Historická data z původní verze se jednorázově převedou pomocí přiloženého SQL migračního skriptu.
 function getAllYears(){
   return Object.keys(S.reportRows||{}).sort().reverse();
 }
